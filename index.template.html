@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!--
+    Reload this page every N seconds. The Kindle's experimental browser has
+    weak JS support, so we rely on a meta refresh instead of scripting.
+    Set `content` to roughly match the GitHub Actions schedule (currently
+    every 15 minutes). Change it here if you change the workflow cron.
+  -->
+  <meta http-equiv="refresh" content="300">
+  <title>Kindle Dashboard</title>
+  <style>
+    html, body { margin: 0; padding: 0; background: #000; }
+    img { display: block; width: 600px; height: 800px; }
+  </style>
+</head>
+<body>
+  <!--
+    `v` is replaced with a fresh timestamp on every render so the browser
+    fetches a new image instead of serving a cached one.
+  -->
+  <img src="dashboard.png?v={{VERSION}}" width="600" height="800"
+       alt="Kindle dashboard">
+</body>
+</html>

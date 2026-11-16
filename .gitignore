@@ -1,0 +1,8 @@
+# Generated site output (deployed via Actions artifact, not committed).
+site/
+
+# Compiled binary (if you run `go build .`)
+/kindle-dashboard
+
+# OS
+.DS_Store
