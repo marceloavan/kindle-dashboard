@@ -1,77 +1,98 @@
-# Kindle e-ink dashboard — project notes
+# Kindle e-ink dashboard
 
-## Goal
-Reuse a Kindle 8th generation (2016) as a personalized, read-only e-ink dashboard with multiple data sources and periodic refreshes, while keeping the device physically intact. There is no dedicated home server.
+Turn an old Kindle into a low-power, always-on dashboard. A GitHub Actions
+workflow renders a high-contrast 600×800 image from your data sources and
+publishes it to GitHub Pages; the Kindle's built-in browser opens the page
+and reloads it periodically.
 
-Confirmed device details:
-- **Model**: Kindle (8th Generation, 2016) — model number `SY69JL`, serial prefixes `G000K9` / `G000KA`, community short-name **KT3**
-- **Firmware**: **5.16.2.1.1**
-- **Display**: 6" e-ink, 600×800 @ 167 ppi, 16-level grayscale
-- **Storage**: 4 GB (~3 GB available)
+No home server, no device modifications, nothing to install on the Kindle.
 
-Serial number prefix still to be confirmed from the device itself.
+## How it works
 
-## Proposed architecture
-- A GitHub Actions workflow periodically fetches/configures the selected data sources and renders a high-contrast monochrome PNG sized for the Kindle screen.
-- GitHub Pages serves the generated image.
-- The Kindle opens the hosted image in its browser; refresh behavior and persistence still need practical validation.
+1. A scheduled GitHub Actions workflow (`.github/workflows/render.yml`)
+   renders a monochrome PNG sized exactly for the Kindle screen.
+2. The workflow deploys the PNG and a tiny HTML page to GitHub Pages.
+3. The page reloads every 5 minutes via `<meta http-equiv="refresh">` — no
+   JavaScript, because the Kindle's experimental browser handles JS poorly —
+   and references the image with a cache-busting query string.
+4. The Kindle displays the page in its browser.
 
-This keeps rendering and scheduling off the Kindle and avoids running a home server. Treat the hosted page/image as public unless repository and Pages settings establish otherwise; do not include secrets or private data in the image or published artifacts.
+Rendering and scheduling happen off-device, so the Kindle only needs Wi-Fi.
 
-## Compatibility caveats
-- **Firmware 5.16.2.1.1 is the last LanguageBreak-compatible version** (LanguageBreak works on any Kindle ≤5.16.2.1.1; 5.16.3+ is patched). **Do not update the firmware**, or the jailbreak window closes permanently.
-- Jailbreak compatibility still depends on the exact model/serial prefix; confirm the prefix before attempting anything.
-- The Kindle Dashboard reference was tested on Paperwhite; support on the basic Kindle 8th generation (KT3) is unconfirmed.
-- Browser behavior, periodic refresh, Wi-Fi reconnection, and sleep/screensaver behavior on this device are unknown and must be tested.
+## Target device
 
-## Prototype (image generator + hosted page)
-A jailbreak-agnostic first pass that can be built and tested before any
-device-level decision.
+- Kindle (8th generation, 2016), model `SY69JL` (KT3)
+- Firmware **5.16.2.1.1** — see [Compatibility notes](#compatibility-notes); do not update
+- 6" e-ink, 600×800 @ 167 ppi, 16-level grayscale
 
-Layout:
-- `main.go` — CLI entrypoint (flags, PNG + HTML output; `go:embed`s the HTML
-  template).
-- `render.go` — draws a 600×800 image at 2x, downsamples, then (by default)
-  dithers to 1-bit black/white with Floyd–Steinberg. Pass `--grayscale` for
-  16-level gray. Fonts are `go:embed`ded, so the binary is self-contained.
-- `sources.go` — data sources (`Card`/`Row` types). Currently sample/placeholder
-  data; real sources plug in later. Display timezone via `DASH_TZ` (default UTC).
-- `index.template.html` — page with a `<meta http-equiv="refresh">` (no JS,
-  for the weak browser) and a cache-busted image URL.
-- `fonts/` — bundled DejaVu Sans (regular + bold) so rendering is identical
-  locally and in CI.
-- `.github/workflows/render.yml` — renders and publishes on a 15-minute
-  schedule (and on manual dispatch).
+Other Kindles with a browser and a ~600×800 screen should work by adjusting
+`width`/`height` in `render.go`.
 
-Run locally:
+## Rendering
 
-    go run . --out site              # 1-bit black/white (default)
-    go run . --out site --grayscale  # 16-level grayscale
+- Draws at 2× resolution, then downsamples for smooth anti-aliased edges.
+- Default output is **1-bit black/white** — best contrast on e-ink — via a
+  hand-rolled Floyd–Steinberg dither; `--grayscale` keeps the 16-level gray
+  the display supports.
+- The DejaVu Sans fonts and the HTML template are embedded with `go:embed`,
+  so output is identical locally and in CI.
 
-Deploy (one-time repo setup):
-1. In repo **Settings → Pages → Build and deployment → Source**, choose
-   **GitHub Actions**.
-2. Push to `main`. The workflow runs on schedule and on `workflow_dispatch`,
-   deploying `site/` to `https://<user>.github.io/<repo>/`.
-3. On the Kindle, open that URL in the browser and bookmark it.
+## Repository layout
 
-Still to validate on-device (step 4): whether the experimental browser honors
-the meta refresh, how it caches the page/image, and Wi-Fi/sleep behavior.
+| Path | Purpose |
+| --- | --- |
+| `main.go` | CLI entrypoint; writes `site/dashboard.png` + `site/index.html` |
+| `render.go` | Layout, drawing, dithering |
+| `sources.go` | Data sources (sample data by default) |
+| `index.template.html` | The page the Kindle loads |
+| `fonts/` | Bundled DejaVu Sans (regular + bold) |
+| `.github/workflows/render.yml` | Scheduled render + Pages deployment |
 
-## Staged plan
-1. Confirm the serial number prefix from the device (expect `G000K9` / `G000KA`) to finalize the compatibility check; firmware is already confirmed at 5.16.2.1.1.
-2. Research current, model-specific compatibility and recovery instructions; make a backup before any modification.
-3. Prototype the image generator and hosted page without modifying the Kindle; begin with non-sensitive sample data. *(scaffolded — see "Prototype" above.)*
-4. Test the page in the Kindle browser, then observe refresh, sleep, and reconnection behavior.
-5. Only if needed and verified compatible, evaluate a reversible jailbreak-based display/refresh setup, following current device-specific instructions.
-6. Add real data sources and a schedule, keeping credentials out of published files and generated images.
+## Quick start
 
-## Safety notes
-- Back up first and keep a recovery path available.
-- Use airplane mode while researching or preparing modifications if appropriate for the device state.
-- Do not update firmware or jailbreak until the exact model is known and the compatibility and instructions have been checked against current sources.
-- Watch for automatic over-the-air updates: the dashboard needs Wi-Fi, but staying online risks an OTA update to 5.16.3+ that closes the jailbreak window. Consider blocking update domains or disconnecting Wi-Fi when not actively testing.
-- Avoid irreversible hardware changes; the requirement is to keep the Kindle intact.
+Requires Go 1.26+.
 
-## Next action
-Confirm the serial number prefix on the back label or in **Settings → Device Options → Device Info** (expect `G000K9` / `G000KA`). Once the prefix is known, the LanguageBreak compatibility question is effectively settled for this firmware — and the device must stay on 5.16.2.1.1.
+```sh
+go run . --out site              # 1-bit black/white (default)
+go run . --out site --grayscale  # 16-level grayscale
+```
+
+Open `site/dashboard.png` (or `site/index.html` in a browser) to inspect the
+result.
+
+## Deployment
+
+1. Enable Pages: **Settings → Pages → Build and deployment → Source → GitHub
+   Actions**.
+2. Push to the default branch — the workflow runs every 15 minutes and on
+   manual dispatch.
+3. On the Kindle, open `https://<user>.github.io/<repo>/` and bookmark it.
+
+Notes: scheduled workflows only run from the default branch, and GitHub
+pauses them after ~60 days of repository inactivity.
+
+## Configuration
+
+- **Timezone** — set `DASH_TZ` (IANA name, e.g. `Europe/Lisbon`; default UTC)
+  as a repository variable in Actions, or as an env var when running locally.
+- **Data sources** — add a function returning `Card`s in `sources.go` and
+  append it in `build_cards()`. The current sources are sample/placeholder.
+- **Secrets** — keep API keys in GitHub Actions secrets. Never in the code or
+  the rendered image.
+
+## ⚠️ Public by design
+
+GitHub Pages serves this site publicly: the rendered image is world-readable.
+Don't put secrets, private calendar entries, or anything else you wouldn't
+post publicly into a data source. Repo visibility can hide the *source code*,
+never the image.
+
+## Compatibility notes
+
+- The device must stay on firmware **5.16.2.1.1**: it's the last version
+  supported by the LanguageBreak jailbreak, which this project keeps as a
+  fallback option. An OTA update would close that window.
+- Browser auto-refresh, Wi-Fi reconnection, and sleep/screensaver behavior on
+  the Kindle 8th gen are not yet validated. Stock firmware can't disable
+  sleep, so if the browser doesn't keep the page alive, a jailbreak-based
+  display setup is the likely next step.

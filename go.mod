@@ -1,4 +1,4 @@
-module kindle-dashboard
+module github.com/marceloavan/kindle-dashboard
 
 go 1.26.0
 
