@@ -42,7 +42,6 @@ const (
 	bodySize   = 22
 	bodyLead   = 4
 	cardGap    = 12
-	heroSize   = 56
 	heroSub    = 20
 	cardHero   = 30
 	footerH    = 38
@@ -278,7 +277,6 @@ func render(cards []Card, grayscale bool) image.Image {
 	stampFace := loadFace(true, float64(stampSize*s))
 	cardFace := loadFace(true, float64(cardTitle*s))
 	bodyFace := loadFace(false, float64(bodySize*s))
-	heroFace := loadFace(true, float64(heroSize*s))
 	subFace := loadFace(false, float64(heroSub*s))
 	cardHeroFace := loadFace(true, float64(cardHero*s))
 	footerFace := loadFace(false, float64(footerSize*s))
@@ -299,32 +297,7 @@ func render(cards []Card, grayscale bool) image.Image {
 	bodyLine := (bodySize + bodyLead) * s
 
 	for _, card := range cards {
-		if card.Invert {
-			// Inverted hero card (white on black).
-			ch := (16+heroSize+2+heroSub+8+14)*s + len(card.Rows)*bodyLine
-			fillRect(img, 0, y, w, y+ch, 0)
-			drawText(img, heroFace, p, y+16*s, card.Hero, 255)
-			drawText(img, subFace, p, y+16*s+heroSize*s+2*s, card.Sub, 255)
-			if card.Icon != "" {
-				is := 48 * s
-				drawIcon(img, w-p-is/2, y+16*s+is/2, is, card.Icon, 255)
-			}
-			ty := y + (16+heroSize+2+heroSub+8)*s
-			for _, row := range card.Rows {
-				drawText(img, bodyFace, p, ty, row.Label, 255)
-				if row.Label != "" {
-					lw := int(font.MeasureString(bodyFace, row.Label) >> 6)
-					drawText(img, bodyFace, p+lw+16*s, ty, row.Value, 255)
-				} else {
-					drawText(img, bodyFace, p, ty, row.Value, 255)
-				}
-				ty += bodyLine
-			}
-			y += ch + gap
-			continue
-		}
-
-		// Normal card: title with a rule to the right edge.
+		// Card: title with a rule to the right edge.
 		title := strings.ToUpper(card.Title)
 		drawText(img, cardFace, p, y+12*s, title, 0)
 		tw := int(font.MeasureString(cardFace, title) >> 6)

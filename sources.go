@@ -30,9 +30,7 @@ type Card struct {
 	Sub string
 	// Icon is a weather icon name ("" for none).
 	Icon string
-	// Invert renders the card as white-on-black.
-	Invert bool
-	Rows   []Row
+	Rows []Row
 }
 
 // envOr returns the environment variable's value, or def when unset.
@@ -79,16 +77,6 @@ func dashboardTitle() string {
 	return envOr("DASH_TITLE", "")
 }
 
-var weekdaysPT = map[time.Weekday]string{
-	time.Sunday:    "Domingo",
-	time.Monday:    "Segunda-feira",
-	time.Tuesday:   "Terça-feira",
-	time.Wednesday: "Quarta-feira",
-	time.Thursday:  "Quinta-feira",
-	time.Friday:    "Sexta-feira",
-	time.Saturday:  "Sábado",
-}
-
 var weekdaysShortPT = map[time.Weekday]string{
 	time.Sunday: "dom", time.Monday: "seg", time.Tuesday: "ter",
 	time.Wednesday: "qua", time.Thursday: "qui", time.Friday: "sex",
@@ -106,19 +94,6 @@ var monthsShortPT = map[time.Month]string{
 func ptStamp(t time.Time) string {
 	return fmt.Sprintf("%s %02d %s %s",
 		weekdaysShortPT[t.Weekday()], t.Day(), monthsShortPT[t.Month()], t.Format("15:04"))
-}
-
-// ---------- Clock ----------
-
-func clockCard() Card {
-	now := currentTime()
-	return Card{
-		Invert: true,
-		Hero:   now.Format("15:04"),
-		Sub: fmt.Sprintf("%s · %s · %s",
-			weekdaysPT[now.Weekday()], now.Format("02/01/2006"),
-			envOr("DASH_TZ_LABEL", "Brasília")),
-	}
 }
 
 // ---------- Weather (Open-Meteo, no API key) ----------
@@ -431,7 +406,6 @@ func marketsCard() Card {
 // buildCards assembles every card, top to bottom, for the dashboard.
 func buildCards() []Card {
 	return []Card{
-		clockCard(),
 		weatherCard(),
 		marketsCard(),
 	}
