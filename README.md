@@ -90,6 +90,7 @@ in Actions, or env vars when running locally):
 | `DASH_CITY` | `Blumenau` | Weather card title |
 | `DASH_LAT` / `DASH_LON` | `-26.9194` / `-49.0661` | Weather coordinates |
 | `DASH_TZ_LABEL` | `Brasília` | Timezone label on the clock card |
+| `DASH_TITLE` | *(empty)* | Header title (blank = timestamp only) |
 
 Weather uses [Open-Meteo](https://open-meteo.com) and market quotes use
 Yahoo Finance — both free and **no API keys**. Tickers live in

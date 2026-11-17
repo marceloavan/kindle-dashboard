@@ -73,6 +73,11 @@ func currentTime() time.Time {
 	return time.Now().In(loc)
 }
 
+// dashboardTitle returns the header title (DASH_TITLE, empty until named).
+func dashboardTitle() string {
+	return envOr("DASH_TITLE", "")
+}
+
 var weekdaysPT = map[time.Weekday]string{
 	time.Sunday:    "Domingo",
 	time.Monday:    "Segunda-feira",
