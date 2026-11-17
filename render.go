@@ -331,6 +331,28 @@ func render(cards []Card, grayscale bool) image.Image {
 			}
 		}
 
+		// 3-day forecast strip.
+		if len(card.Forecast) > 0 {
+			ty += 4 * s
+			fillRect(img, p, ty, w-p, ty+1*s, 0)
+			ty += 8 * s
+			colW := (w - 2*p) / 3
+			labelTop := ty
+			iconTop := ty + faceH(footerFace) + 2*s
+			tempTop := iconTop + 32*s + 2*s
+			for i, d := range card.Forecast {
+				cx := p + i*colW + colW/2
+				lw := int(font.MeasureString(footerFace, d.Label) >> 6)
+				drawText(img, footerFace, cx-lw/2, labelTop, d.Label, 0)
+				is := 32 * s
+				drawIcon(img, cx, iconTop+is/2, is, d.Icon, 0)
+				temp := fmt.Sprintf("%.0f° / %.0f°", d.Max, d.Min)
+				tw := int(font.MeasureString(footerFace, temp) >> 6)
+				drawText(img, footerFace, cx-tw/2, tempTop, temp, 0)
+			}
+			ty = tempTop + faceH(footerFace) + 4*s
+		}
+
 		y = ty + gap
 	}
 

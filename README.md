@@ -50,7 +50,7 @@ Other Kindles with a browser and a ~600×800 screen should work by adjusting
 | --- | --- |
 | `main.go` | CLI entrypoint; writes `site/dashboard.png` + `site/index.html` |
 | `render.go` | Layout, drawing, dithering |
-| `sources.go` | Live data sources (Open-Meteo weather, Yahoo Finance quotes) |
+| `sources.go` | Live data sources (Open-Meteo weather, Yahoo Finance quotes, BCB indicators) |
 | `index.template.html` | The page the Kindle loads (browser mode) |
 | `fonts/` | Bundled DejaVu Sans (regular + bold) |
 | `device/dashboard.sh` | Jailbroken-Kindle display loop (scriptlet) |
@@ -91,12 +91,13 @@ in Actions, or env vars when running locally):
 | `DASH_LAT` / `DASH_LON` | `-26.9194` / `-49.0661` | Weather coordinates |
 | `DASH_TITLE` | *(empty)* | Header title (blank = timestamp only) |
 
-Weather uses [Open-Meteo](https://open-meteo.com) and market quotes use
-Yahoo Finance — both free and **no API keys**. Tickers live in
-`defaultQuotes` in `sources.go` (edit to taste). To add a source, write a
-function returning `Card`s in `sources.go` and append it in `build_cards()`.
-Keep any API keys in GitHub Actions secrets — never in the code or the
-rendered image.
+Weather uses [Open-Meteo](https://open-meteo.com) (including the 3-day
+forecast strip), market quotes use Yahoo Finance, and macro indicators use
+the Banco Central [SGS API](https://dadosabertos.bcb.gov.br) — all free and
+**no API keys**. The quote watchlist lives in `defaultQuotes` in
+`sources.go` (edit to taste). To add a source, write a function returning
+`Card`s in `sources.go` and append it in `build_cards()`. Keep any API keys
+in GitHub Actions secrets — never in the code or the rendered image.
 
 ## ⚠️ Public by design
 

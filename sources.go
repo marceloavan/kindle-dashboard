@@ -30,7 +30,17 @@ type Card struct {
 	Sub string
 	// Icon is a weather icon name ("" for none).
 	Icon string
-	Rows []Row
+	// Forecast is an optional 3-day strip rendered under the rows.
+	Forecast []ForecastDay
+	Rows     []Row
+}
+
+// ForecastDay is one column of the forecast strip.
+type ForecastDay struct {
+	Label string
+	Icon  string
+	Max   float64
+	Min   float64
 }
 
 // envOr returns the environment variable's value, or def when unset.
@@ -77,6 +87,12 @@ func dashboardTitle() string {
 	return envOr("DASH_TITLE", "")
 }
 
+var weekdayShortPT = map[time.Weekday]string{
+	time.Sunday: "Dom", time.Monday: "Seg", time.Tuesday: "Ter",
+	time.Wednesday: "Qua", time.Thursday: "Qui", time.Friday: "Sex",
+	time.Saturday: "Sáb",
+}
+
 // ---------- Weather (Open-Meteo, no API key) ----------
 
 type openMeteoCurrent struct {
@@ -88,8 +104,10 @@ type openMeteoCurrent struct {
 }
 
 type openMeteoDaily struct {
-	TempMax []float64 `json:"temperature_2m_max"`
-	TempMin []float64 `json:"temperature_2m_min"`
+	Time        []string  `json:"time"`
+	WeatherCode []int     `json:"weather_code"`
+	TempMax     []float64 `json:"temperature_2m_max"`
+	TempMin     []float64 `json:"temperature_2m_min"`
 }
 
 type openMeteoResp struct {
@@ -160,8 +178,8 @@ func weatherCard() Card {
 	api := fmt.Sprintf("https://api.open-meteo.com/v1/forecast"+
 		"?latitude=%s&longitude=%s"+
 		"&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m"+
-		"&daily=temperature_2m_max,temperature_2m_min"+
-		"&timezone=%s&forecast_days=1",
+		"&daily=temperature_2m_max,temperature_2m_min,weather_code"+
+		"&timezone=%s&forecast_days=3",
 		url.QueryEscape(lat), url.QueryEscape(lon), url.QueryEscape(tz))
 
 	title := "Tempo · " + city
@@ -176,23 +194,47 @@ func weatherCard() Card {
 		return unavailable
 	}
 
-	rows := []Row{}
-	if len(w.Daily.TempMax) > 0 {
-		rows = append(rows, Row{"Máx", fmt.Sprintf("%.0f°C", w.Daily.TempMax[0])})
-	}
-	if len(w.Daily.TempMin) > 0 {
-		rows = append(rows, Row{"Mín", fmt.Sprintf("%.0f°C", w.Daily.TempMin[0])})
-	}
-	rows = append(rows,
+	rows := []Row{
 		Row{"Umidade", fmt.Sprintf("%d%%", w.Current.Humidity)},
 		Row{"Vento", fmt.Sprintf("%.0f km/h", w.Current.WindSpeed)},
-	)
+	}
+
+	// 3-day forecast strip (today, tomorrow, then the weekday name).
+	var forecast []ForecastDay
+	for i := 0; i < 3; i++ {
+		if i >= len(w.Daily.Time) {
+			break
+		}
+		f := ForecastDay{Icon: "cloudy"}
+		switch i {
+		case 0:
+			f.Label = "Hoje"
+		case 1:
+			f.Label = "Amanhã"
+		default:
+			if d, err := time.Parse("2006-01-02", w.Daily.Time[i]); err == nil {
+				f.Label = weekdayShortPT[d.Weekday()]
+			}
+		}
+		if i < len(w.Daily.WeatherCode) {
+			f.Icon = wmoIcon(w.Daily.WeatherCode[i])
+		}
+		if i < len(w.Daily.TempMax) {
+			f.Max = w.Daily.TempMax[i]
+		}
+		if i < len(w.Daily.TempMin) {
+			f.Min = w.Daily.TempMin[i]
+		}
+		forecast = append(forecast, f)
+	}
+
 	return Card{
-		Title: title,
-		Icon:  wmoIcon(w.Current.WeatherCode),
-		Hero:  fmt.Sprintf("%.0f°C", w.Current.Temperature),
-		Sub:   fmt.Sprintf("%s · sensação %.0f°C", wmoText(w.Current.WeatherCode), w.Current.Apparent),
-		Rows:  rows,
+		Title:    title,
+		Icon:     wmoIcon(w.Current.WeatherCode),
+		Hero:     fmt.Sprintf("%.0f°C", w.Current.Temperature),
+		Sub:      fmt.Sprintf("%s · sensação %.0f°C", wmoText(w.Current.WeatherCode), w.Current.Apparent),
+		Rows:     rows,
+		Forecast: forecast,
 	}
 }
 
@@ -384,10 +426,56 @@ func marketsCard() Card {
 	return Card{Title: "Mercados", Rows: rows}
 }
 
+// ---------- Indicators (Banco Central SGS API, no key) ----------
+
+type bcbSeries []struct {
+	Data  string `json:"data"`
+	Valor string `json:"valor"`
+}
+
+// bcbLatest returns the most recent value of an SGS series (last 6 months).
+func bcbLatest(series int) (float64, error) {
+	now := currentTime()
+	from := now.AddDate(0, -6, 0).Format("02/01/2006")
+	to := now.Format("02/01/2006")
+	api := fmt.Sprintf("https://api.bcb.gov.br/dados/serie/bcdata.sgs.%d/dados?formato=json&dataInicial=%s&dataFinal=%s",
+		series, url.QueryEscape(from), url.QueryEscape(to))
+	body, err := fetchGET(api)
+	if err != nil {
+		return 0, err
+	}
+	var r bcbSeries
+	if err := json.Unmarshal(body, &r); err != nil {
+		return 0, err
+	}
+	if len(r) == 0 {
+		return 0, fmt.Errorf("no data for series %d", series)
+	}
+	v := strings.ReplaceAll(r[len(r)-1].Valor, ",", ".")
+	return strconv.ParseFloat(v, 64)
+}
+
+func indicatorsCard() Card {
+	title := "Indicadores"
+	rows := []Row{
+		{"Selic", "—"},
+		{"IPCA 12m", "—"},
+	}
+	// 432 = Selic meta (% a.a.), 13522 = IPCA acumulado em 12 meses (%).
+	if selic, err := bcbLatest(432); err == nil {
+		rows[0] = Row{"Selic", fmt.Sprintf("%s%% a.a.", ptNum(selic, 2))}
+	}
+	if ipca, err := bcbLatest(13522); err == nil {
+		rows[1] = Row{"IPCA 12m", fmt.Sprintf("%s%%", ptNum(ipca, 2))}
+	}
+	return Card{Title: title, Rows: rows}
+}
+
 // buildCards assembles every card, top to bottom, for the dashboard.
 func buildCards() []Card {
 	return []Card{
 		weatherCard(),
 		marketsCard(),
+		indicatorsCard(),
 	}
 }
