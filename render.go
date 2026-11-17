@@ -131,7 +131,7 @@ func render(cards []Card, grayscale bool) image.Image {
 	// Header bar (black, with white text).
 	fillRect(img, 0, 0, w, hdr, 0)
 	drawText(img, titleFace, p, (hdr-faceH(titleFace))/2, "Kindle Dashboard", 255)
-	stamp := currentTime().Format("Mon 02 Jan  15:04")
+	stamp := ptStamp(currentTime())
 	stampW := int(font.MeasureString(stampFace, stamp) >> 6)
 	drawText(img, stampFace, w-p-stampW, (hdr-faceH(stampFace))/2, stamp, 255)
 

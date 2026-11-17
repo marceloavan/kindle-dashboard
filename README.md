@@ -1,11 +1,17 @@
 # Kindle e-ink dashboard
 
 Turn an old Kindle into a low-power, always-on dashboard. A GitHub Actions
-workflow renders a high-contrast 600×800 image from your data sources and
-publishes it to GitHub Pages; the Kindle's built-in browser opens the page
-and reloads it periodically.
+workflow renders a high-contrast 600×800 image from live data sources and
+publishes it to GitHub Pages.
 
-No home server, no device modifications, nothing to install on the Kindle.
+Two display modes:
+
+- **Stock**: the Kindle's browser opens the page and reloads it periodically.
+- **Jailbroken** (what this project uses): a small scriptlet draws the image
+  straight to the e-ink framebuffer with FBInk — fullscreen, always awake,
+  timer-based refresh. See [On-device display](#on-device-display-jailbroken).
+
+No home server required; rendering and scheduling happen in GitHub Actions.
 
 ## How it works
 
@@ -15,7 +21,8 @@ No home server, no device modifications, nothing to install on the Kindle.
 3. The page reloads every 5 minutes via `<meta http-equiv="refresh">` — no
    JavaScript, because the Kindle's experimental browser handles JS poorly —
    and references the image with a cache-busting query string.
-4. The Kindle displays the page in its browser.
+4. The Kindle shows it: either the browser displays the page, or (jailbroken)
+   a scriptlet draws the PNG fullscreen on the framebuffer.
 
 Rendering and scheduling happen off-device, so the Kindle only needs Wi-Fi.
 
@@ -43,9 +50,10 @@ Other Kindles with a browser and a ~600×800 screen should work by adjusting
 | --- | --- |
 | `main.go` | CLI entrypoint; writes `site/dashboard.png` + `site/index.html` |
 | `render.go` | Layout, drawing, dithering |
-| `sources.go` | Data sources (sample data by default) |
-| `index.template.html` | The page the Kindle loads |
+| `sources.go` | Live data sources (clock, Open-Meteo weather, RSS news) |
+| `index.template.html` | The page the Kindle loads (browser mode) |
 | `fonts/` | Bundled DejaVu Sans (regular + bold) |
+| `device/dashboard.sh` | Jailbroken-Kindle display loop (scriptlet) |
 | `.github/workflows/render.yml` | Scheduled render + Pages deployment |
 
 ## Quick start
@@ -73,12 +81,21 @@ pauses them after ~60 days of repository inactivity.
 
 ## Configuration
 
-- **Timezone** — set `DASH_TZ` (IANA name, e.g. `Europe/Lisbon`; default UTC)
-  as a repository variable in Actions, or as an env var when running locally.
-- **Data sources** — add a function returning `Card`s in `sources.go` and
-  append it in `build_cards()`. The current sources are sample/placeholder.
-- **Secrets** — keep API keys in GitHub Actions secrets. Never in the code or
-  the rendered image.
+Sources and defaults are set via environment variables (repository variables
+in Actions, or env vars when running locally):
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `DASH_TZ` | `America/Sao_Paulo` | Display timezone (IANA name) |
+| `DASH_CITY` | `Blumenau` | Weather card title |
+| `DASH_LAT` / `DASH_LON` | `-26.9194` / `-49.0661` | Weather coordinates |
+| `DASH_RSS_URL` | `https://g1.globo.com/rss/g1/` | News feed (RSS 2.0) |
+| `DASH_RSS_NAME` | `G1` | News card label |
+
+Weather uses [Open-Meteo](https://open-meteo.com) and news uses plain RSS —
+both are free and need **no API keys**. To add a source, write a function
+returning `Card`s in `sources.go` and append it in `build_cards()`. Keep any
+API keys in GitHub Actions secrets — never in the code or the rendered image.
 
 ## ⚠️ Public by design
 
@@ -87,12 +104,30 @@ Don't put secrets, private calendar entries, or anything else you wouldn't
 post publicly into a data source. Repo visibility can hide the *source code*,
 never the image.
 
+## On-device display (jailbroken)
+
+The jailbroken path, validated on this device (KT3, firmware 5.16.2.1.1):
+
+1. **Jailbreak**: [WinterBreak2](https://kindlemodding.org/jailbreaking/WinterBreak2/)
+   — the wizard's supported method for the KT3 on this firmware. Browser-based,
+   reversible via factory reset, and it auto-blocks OTA updates.
+2. **Display**: copy `device/dashboard.sh` into the Kindle's `documents/`
+   folder; it appears as a book and runs when tapped. It:
+   - keeps the device awake (`preventScreenSaver`),
+   - fetches the rendered PNG from GitHub Pages and draws it fullscreen with
+     FBInk (bundled at `/mnt/us/libkh/bin/fbink`),
+   - refreshes every 5 minutes (every 4th refresh flashes to clear ghosting),
+   - exits on power-button press, screen tap, or a `/mnt/us/dashboard.stop`
+     flag file, logging to `/mnt/us/dashboard.log`.
+3. The image URL lives in `BASE_URL` at the top of the script; point it at
+   your own Pages deployment.
+
 ## Compatibility notes
 
 - The device must stay on firmware **5.16.2.1.1**: it's the last version
-  supported by the LanguageBreak jailbreak, which this project keeps as a
-  fallback option. An OTA update would close that window.
-- Browser auto-refresh, Wi-Fi reconnection, and sleep/screensaver behavior on
-  the Kindle 8th gen are not yet validated. Stock firmware can't disable
-  sleep, so if the browser doesn't keep the page alive, a jailbreak-based
-  display setup is the likely next step.
+  supported by the current jailbreaks, and the OTA blocker is what keeps the
+  window open. Do not update.
+- Validated on-device: WinterBreak2 jailbreak, Wi-Fi fetch of the Pages image
+  over TLS, FBInk fullscreen draw (600×800), power-button exit.
+- Still to observe long-term: Wi-Fi reconnection after drops, behavior across
+  deep sleep/reboots, and e-ink ghosting over multi-hour runs.
