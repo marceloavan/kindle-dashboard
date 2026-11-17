@@ -77,25 +77,6 @@ func dashboardTitle() string {
 	return envOr("DASH_TITLE", "")
 }
 
-var weekdaysShortPT = map[time.Weekday]string{
-	time.Sunday: "dom", time.Monday: "seg", time.Tuesday: "ter",
-	time.Wednesday: "qua", time.Thursday: "qui", time.Friday: "sex",
-	time.Saturday: "sáb",
-}
-
-var monthsShortPT = map[time.Month]string{
-	time.January: "jan", time.February: "fev", time.March: "mar",
-	time.April: "abr", time.May: "mai", time.June: "jun",
-	time.July: "jul", time.August: "ago", time.September: "set",
-	time.October: "out", time.November: "nov", time.December: "dez",
-}
-
-// ptStamp formats the header timestamp in Portuguese, e.g. "seg 17 nov 22:15".
-func ptStamp(t time.Time) string {
-	return fmt.Sprintf("%s %02d %s %s",
-		weekdaysShortPT[t.Weekday()], t.Day(), monthsShortPT[t.Month()], t.Format("15:04"))
-}
-
 // ---------- Weather (Open-Meteo, no API key) ----------
 
 type openMeteoCurrent struct {

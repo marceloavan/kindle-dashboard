@@ -37,7 +37,6 @@ const (
 	pad        = 30
 	headerH    = 76
 	titleSize  = 32
-	stampSize  = 20
 	cardTitle  = 24
 	bodySize   = 22
 	bodyLead   = 4
@@ -267,33 +266,30 @@ func render(cards []Card, grayscale bool) image.Image {
 	w := width * s
 	h := height * s
 	p := pad * s
-	hdr := headerH * s
 	gap := cardGap * s
 
 	img := image.NewGray(image.Rect(0, 0, w, h))
 	fillRect(img, 0, 0, w, h, 255) // white background
 
 	titleFace := loadFace(true, float64(titleSize*s))
-	stampFace := loadFace(true, float64(stampSize*s))
 	cardFace := loadFace(true, float64(cardTitle*s))
 	bodyFace := loadFace(false, float64(bodySize*s))
 	subFace := loadFace(false, float64(heroSub*s))
 	cardHeroFace := loadFace(true, float64(cardHero*s))
 	footerFace := loadFace(false, float64(footerSize*s))
 
-	// Header bar (black, with white text).
-	fillRect(img, 0, 0, w, hdr, 0)
-	stamp := ptStamp(currentTime())
-	stampW := int(font.MeasureString(stampFace, stamp) >> 6)
+	// Header: slim black strip; a taller bar with the title once DASH_TITLE
+	// is set. The footer carries the only timestamp.
+	hdrH := 16 * s
 	if t := dashboardTitle(); t != "" {
-		drawText(img, titleFace, p, (hdr-faceH(titleFace))/2, t, 255)
-		drawText(img, stampFace, w-p-stampW, (hdr-faceH(stampFace))/2, stamp, 255)
+		hdrH = headerH * s
+		fillRect(img, 0, 0, w, hdrH, 0)
+		drawText(img, titleFace, p, (hdrH-faceH(titleFace))/2, t, 255)
 	} else {
-		// No title yet: center the timestamp in the bar.
-		drawText(img, stampFace, (w-stampW)/2, (hdr-faceH(stampFace))/2, stamp, 255)
+		fillRect(img, 0, 0, w, hdrH, 0)
 	}
 
-	y := hdr
+	y := hdrH
 	bodyLine := (bodySize + bodyLead) * s
 
 	for _, card := range cards {
