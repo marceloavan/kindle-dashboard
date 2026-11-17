@@ -2,12 +2,13 @@ package main
 
 import (
 	"encoding/json"
-	"encoding/xml"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -22,7 +23,15 @@ type Row struct {
 // Card is a titled block of rows shown on the dashboard.
 type Card struct {
 	Title string
-	Rows  []Row
+	// Hero is a big display value (e.g. the current time or temperature).
+	Hero string
+	// Sub is small text rendered beside/under the hero.
+	Sub string
+	// Icon is a weather icon name ("" for none).
+	Icon string
+	// Invert renders the card as white-on-black.
+	Invert bool
+	Rows   []Row
 }
 
 // envOr returns the environment variable's value, or def when unset.
@@ -36,7 +45,13 @@ func envOr(key, def string) string {
 // fetchGET returns the body of url, capped at 2 MiB, with a 15s timeout.
 func fetchGET(rawurl string) ([]byte, error) {
 	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Get(rawurl)
+	req, err := http.NewRequest(http.MethodGet, rawurl, nil)
+	if err != nil {
+		return nil, err
+	}
+	// Some providers (Yahoo) reject requests without a user agent.
+	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) kindle-dashboard")
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -92,12 +107,11 @@ func ptStamp(t time.Time) string {
 func clockCard() Card {
 	now := currentTime()
 	return Card{
-		Title: "Relógio",
+		Invert: true,
+		Hero:   now.Format("15:04"),
+		Sub:    fmt.Sprintf("%s · %s", weekdaysPT[now.Weekday()], now.Format("02/01/2006")),
 		Rows: []Row{
-			{"Hora", now.Format("15:04")},
-			{"Data", now.Format("02/01/2006")},
-			{"Dia", weekdaysPT[now.Weekday()]},
-			{"Fuso", envOr("DASH_TZ", "America/Sao_Paulo")},
+			{"Fuso", envOr("DASH_TZ_LABEL", "Brasília")},
 		},
 	}
 }
@@ -151,6 +165,31 @@ func wmoText(code int) string {
 	return "—"
 }
 
+// wmoIcon maps WMO weather codes to icon names for the renderer.
+func wmoIcon(code int) string {
+	switch {
+	case code == 0:
+		return "clear"
+	case code == 1, code == 2:
+		return "partly"
+	case code == 3:
+		return "cloudy"
+	case code == 45, code == 48:
+		return "fog"
+	case code >= 51 && code <= 57:
+		return "drizzle"
+	case code >= 61 && code <= 67:
+		return "rain"
+	case code >= 80 && code <= 82:
+		return "showers"
+	case code >= 71 && code <= 77, code == 85, code == 86:
+		return "snow"
+	case code >= 95 && code <= 99:
+		return "storm"
+	}
+	return "cloudy"
+}
+
 func weatherCard() Card {
 	city := envOr("DASH_CITY", "Blumenau")
 	lat := envOr("DASH_LAT", "-26.9194")
@@ -176,10 +215,7 @@ func weatherCard() Card {
 		return unavailable
 	}
 
-	rows := []Row{
-		{"Agora", fmt.Sprintf("%.0f°C · %s", w.Current.Temperature, wmoText(w.Current.WeatherCode))},
-		{"Sensação", fmt.Sprintf("%.0f°C", w.Current.Apparent)},
-	}
+	rows := []Row{}
 	if len(w.Daily.TempMax) > 0 {
 		rows = append(rows, Row{"Máx", fmt.Sprintf("%.0f°C", w.Daily.TempMax[0])})
 	}
@@ -190,54 +226,115 @@ func weatherCard() Card {
 		Row{"Umidade", fmt.Sprintf("%d%%", w.Current.Humidity)},
 		Row{"Vento", fmt.Sprintf("%.0f km/h", w.Current.WindSpeed)},
 	)
-	return Card{Title: title, Rows: rows}
+	return Card{
+		Title: title,
+		Icon:  wmoIcon(w.Current.WeatherCode),
+		Hero:  fmt.Sprintf("%.0f°C", w.Current.Temperature),
+		Sub:   fmt.Sprintf("%s · sensação %.0f°C", wmoText(w.Current.WeatherCode), w.Current.Apparent),
+		Rows:  rows,
+	}
 }
 
-// ---------- News (RSS, no API key) ----------
+// ---------- Markets (Yahoo Finance, no API key) ----------
 
-type rssFeed struct {
-	Channel struct {
-		Items []struct {
-			Title string `xml:"title"`
-		} `xml:"item"`
-	} `xml:"channel"`
+// defaultQuotes defines the rows of the markets card. Edit to taste.
+var defaultQuotes = []struct {
+	symbol string
+	label  string
+	dec    int
+	prefix string
+}{
+	{"^BVSP", "Ibovespa", 0, ""},
+	{"BRL=X", "Dólar", 2, "R$ "},
+	{"BTC-USD", "Bitcoin", 0, "US$ "},
+	{"PETR4.SA", "Petrobras PN", 2, "R$ "},
+	{"VALE3.SA", "Vale ON", 2, "R$ "},
+	{"ITUB4.SA", "Itaú PN", 2, "R$ "},
 }
 
-func newsCard() Card {
-	name := envOr("DASH_RSS_NAME", "G1")
-	feed := envOr("DASH_RSS_URL", "https://g1.globo.com/rss/g1/")
+type yahooChart struct {
+	Chart struct {
+		Result []struct {
+			Meta struct {
+				RegularMarketPrice float64 `json:"regularMarketPrice"`
+				ChartPreviousClose float64 `json:"chartPreviousClose"`
+				PreviousClose      float64 `json:"previousClose"`
+			} `json:"meta"`
+		} `json:"result"`
+		Error any `json:"error"`
+	} `json:"chart"`
+}
 
-	title := "Notícias · " + name
-	unavailable := Card{Title: title, Rows: []Row{{"", "Indisponível"}}}
-
-	body, err := fetchGET(feed)
+// yahooQuote returns the latest price and previous close for a symbol.
+func yahooQuote(symbol string) (price, prev float64, err error) {
+	api := "https://query1.finance.yahoo.com/v8/finance/chart/" +
+		url.QueryEscape(symbol) + "?range=1d&interval=1d"
+	body, err := fetchGET(api)
 	if err != nil {
-		return unavailable
+		return 0, 0, err
 	}
-	var r rssFeed
-	if err := xml.Unmarshal(body, &r); err != nil {
-		return unavailable
+	var c yahooChart
+	if err := json.Unmarshal(body, &c); err != nil {
+		return 0, 0, err
 	}
+	if c.Chart.Error != nil || len(c.Chart.Result) == 0 {
+		return 0, 0, fmt.Errorf("no data for %s", symbol)
+	}
+	m := c.Chart.Result[0].Meta
+	prev = m.ChartPreviousClose
+	if prev == 0 {
+		prev = m.PreviousClose
+	}
+	return m.RegularMarketPrice, prev, nil
+}
 
+// ptNum formats a number with Brazilian grouping (1.234,56).
+func ptNum(v float64, dec int) string {
+	neg := v < 0
+	s := strconv.FormatFloat(math.Abs(v), 'f', dec, 64)
+	parts := strings.SplitN(s, ".", 2)
+	intPart := parts[0]
+	var b strings.Builder
+	for i, r := range intPart {
+		if i > 0 && (len(intPart)-i)%3 == 0 {
+			b.WriteByte('.')
+		}
+		b.WriteRune(r)
+	}
+	if len(parts) == 2 {
+		b.WriteByte(',')
+		b.WriteString(parts[1])
+	}
+	if neg {
+		return "-" + b.String()
+	}
+	return b.String()
+}
+
+func marketsCard() Card {
 	var rows []Row
-	for _, it := range r.Channel.Items {
-		t := strings.TrimSpace(it.Title)
-		if t == "" {
+	for _, q := range defaultQuotes {
+		price, prev, err := yahooQuote(q.symbol)
+		if err != nil {
+			rows = append(rows, Row{q.label, "—"})
 			continue
 		}
-		// Cap at ~2 rendered lines (body width fits ~46 chars/line).
-		if runes := []rune(t); len(runes) > 88 {
-			t = string(runes[:88]) + "…"
+		chg := 0.0
+		if prev > 0 {
+			chg = (price - prev) / prev * 100
 		}
-		rows = append(rows, Row{"", t})
-		if len(rows) == 4 {
-			break
+		arrow, sign := "▲", "+"
+		if chg < 0 {
+			arrow, sign = "▼", "−"
 		}
+		val := fmt.Sprintf("%s%s  %s %s%s%%",
+			q.prefix, ptNum(price, q.dec), arrow, sign, ptNum(math.Abs(chg), 2))
+		rows = append(rows, Row{q.label, val})
 	}
 	if len(rows) == 0 {
-		rows = []Row{{"", "Sem manchetes"}}
+		return Card{Title: "Mercados", Rows: []Row{{"", "Indisponível"}}}
 	}
-	return Card{Title: title, Rows: rows}
+	return Card{Title: "Mercados", Rows: rows}
 }
 
 // buildCards assembles every card, top to bottom, for the dashboard.
@@ -245,6 +342,6 @@ func buildCards() []Card {
 	return []Card{
 		clockCard(),
 		weatherCard(),
-		newsCard(),
+		marketsCard(),
 	}
 }

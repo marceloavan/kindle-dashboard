@@ -50,7 +50,7 @@ Other Kindles with a browser and a ~600×800 screen should work by adjusting
 | --- | --- |
 | `main.go` | CLI entrypoint; writes `site/dashboard.png` + `site/index.html` |
 | `render.go` | Layout, drawing, dithering |
-| `sources.go` | Live data sources (clock, Open-Meteo weather, RSS news) |
+| `sources.go` | Live data sources (clock, Open-Meteo weather, Yahoo Finance quotes) |
 | `index.template.html` | The page the Kindle loads (browser mode) |
 | `fonts/` | Bundled DejaVu Sans (regular + bold) |
 | `device/dashboard.sh` | Jailbroken-Kindle display loop (scriptlet) |
@@ -89,13 +89,14 @@ in Actions, or env vars when running locally):
 | `DASH_TZ` | `America/Sao_Paulo` | Display timezone (IANA name) |
 | `DASH_CITY` | `Blumenau` | Weather card title |
 | `DASH_LAT` / `DASH_LON` | `-26.9194` / `-49.0661` | Weather coordinates |
-| `DASH_RSS_URL` | `https://g1.globo.com/rss/g1/` | News feed (RSS 2.0) |
-| `DASH_RSS_NAME` | `G1` | News card label |
+| `DASH_TZ_LABEL` | `Brasília` | Timezone label on the clock card |
 
-Weather uses [Open-Meteo](https://open-meteo.com) and news uses plain RSS —
-both are free and need **no API keys**. To add a source, write a function
-returning `Card`s in `sources.go` and append it in `build_cards()`. Keep any
-API keys in GitHub Actions secrets — never in the code or the rendered image.
+Weather uses [Open-Meteo](https://open-meteo.com) and market quotes use
+Yahoo Finance — both free and **no API keys**. Tickers live in
+`defaultQuotes` in `sources.go` (edit to taste). To add a source, write a
+function returning `Card`s in `sources.go` and append it in `build_cards()`.
+Keep any API keys in GitHub Actions secrets — never in the code or the
+rendered image.
 
 ## ⚠️ Public by design
 
