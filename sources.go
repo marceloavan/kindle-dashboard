@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -114,10 +115,9 @@ func clockCard() Card {
 	return Card{
 		Invert: true,
 		Hero:   now.Format("15:04"),
-		Sub:    fmt.Sprintf("%s · %s", weekdaysPT[now.Weekday()], now.Format("02/01/2006")),
-		Rows: []Row{
-			{"Fuso", envOr("DASH_TZ_LABEL", "Brasília")},
-		},
+		Sub: fmt.Sprintf("%s · %s · %s",
+			weekdaysPT[now.Weekday()], now.Format("02/01/2006"),
+			envOr("DASH_TZ_LABEL", "Brasília")),
 	}
 }
 
@@ -242,19 +242,50 @@ func weatherCard() Card {
 
 // ---------- Markets (Yahoo Finance, no API key) ----------
 
-// defaultQuotes defines the rows of the markets card. Edit to taste.
+// indexQuotes are always shown, in this order, at the top of the card.
+var indexQuotes = []struct {
+	symbol string
+	label  string
+	dec    int
+	prefix string
+}{
+	{"^BVSP", "IBOV", 0, ""},
+	{"BRL=X", "Dólar", 2, "R$ "},
+	{"^GSPC", "S&P 500", 0, "US$ "},
+}
+
+// defaultQuotes is the watchlist; the card shows its biggest movers.
 var defaultQuotes = []struct {
 	symbol string
 	label  string
 	dec    int
 	prefix string
 }{
-	{"^BVSP", "Ibovespa", 0, ""},
-	{"BRL=X", "Dólar", 2, "R$ "},
-	{"BTC-USD", "Bitcoin", 0, "US$ "},
-	{"PETR4.SA", "Petrobras PN", 2, "R$ "},
-	{"VALE3.SA", "Vale ON", 2, "R$ "},
-	{"ITUB4.SA", "Itaú PN", 2, "R$ "},
+	// Brazilian stocks.
+	{"AGRO3.SA", "AGRO3", 2, "R$ "},
+	{"BBAS3.SA", "BBAS3", 2, "R$ "},
+	{"BBDC4.SA", "BBDC4", 2, "R$ "},
+	{"BPAC11.SA", "BPAC11", 2, "R$ "},
+	{"CSAN3.SA", "CSAN3", 2, "R$ "},
+	{"EGIE3.SA", "EGIE3", 2, "R$ "},
+	{"ITUB4.SA", "ITUB4", 2, "R$ "},
+	{"KLBN11.SA", "KLBN11", 2, "R$ "},
+	{"MDIA3.SA", "MDIA3", 2, "R$ "},
+	{"RADL3.SA", "RADL3", 2, "R$ "},
+	{"RDOR3.SA", "RDOR3", 2, "R$ "},
+	{"VALE3.SA", "VALE3", 2, "R$ "},
+	{"WEGE3.SA", "WEGE3", 2, "R$ "},
+	// Equity ETF and fixed-income ETF.
+	{"AUVP11.SA", "AUVP11", 2, "R$ "},
+	{"AUPO11.SA", "AUPO11", 2, "R$ "},
+	// Real-estate funds (logistics, malls) and real-estate credit fund.
+	{"BTLG11.SA", "BTLG11", 2, "R$ "},
+	{"XPML11.SA", "XPML11", 2, "R$ "},
+	{"RECR11.SA", "RECR11", 2, "R$ "},
+	// Dollar funds.
+	{"QQQ", "QQQ", 2, "US$ "},
+	{"AOK", "AOK", 2, "US$ "},
+	{"SPHQ", "SPHQ", 2, "US$ "},
 }
 
 type yahooChart struct {
@@ -316,9 +347,21 @@ func ptNum(v float64, dec int) string {
 	return b.String()
 }
 
+// formatQuote renders "R$ 38,72 ▲ +2,4%" style values.
+func formatQuote(prefix string, price float64, dec int, chg float64) string {
+	arrow, sign := "▲", "+"
+	if chg < 0 {
+		arrow, sign = "▼", "−"
+	}
+	return fmt.Sprintf("%s%s %s %s%s%%",
+		prefix, ptNum(price, dec), arrow, sign, ptNum(math.Abs(chg), 1))
+}
+
 func marketsCard() Card {
 	var rows []Row
-	for _, q := range defaultQuotes {
+
+	// Indices first, always shown.
+	for _, q := range indexQuotes {
 		price, prev, err := yahooQuote(q.symbol)
 		if err != nil {
 			rows = append(rows, Row{q.label, "—"})
@@ -328,14 +371,57 @@ func marketsCard() Card {
 		if prev > 0 {
 			chg = (price - prev) / prev * 100
 		}
-		arrow, sign := "▲", "+"
-		if chg < 0 {
-			arrow, sign = "▼", "−"
-		}
-		val := fmt.Sprintf("%s%s  %s %s%s%%",
-			q.prefix, ptNum(price, q.dec), arrow, sign, ptNum(math.Abs(chg), 2))
-		rows = append(rows, Row{q.label, val})
+		rows = append(rows, Row{q.label, formatQuote(q.prefix, price, q.dec, chg)})
+		time.Sleep(150 * time.Millisecond)
 	}
+
+	// Watchlist: keep only the biggest movers, ranked.
+	type mover struct {
+		label  string
+		price  float64
+		chg    float64
+		dec    int
+		prefix string
+	}
+	var movers []mover
+	for _, q := range defaultQuotes {
+		price, prev, err := yahooQuote(q.symbol)
+		if err != nil {
+			continue
+		}
+		chg := 0.0
+		if prev > 0 {
+			chg = (price - prev) / prev * 100
+		}
+		movers = append(movers, mover{q.label, price, chg, q.dec, q.prefix})
+		time.Sleep(150 * time.Millisecond)
+	}
+	sort.Slice(movers, func(i, j int) bool { return movers[i].chg > movers[j].chg })
+
+	var gains, losses []mover
+	for _, m := range movers {
+		if m.chg > 0 && len(gains) < 3 {
+			gains = append(gains, m)
+		}
+	}
+	for i := len(movers) - 1; i >= 0; i-- {
+		if movers[i].chg < 0 && len(losses) < 3 {
+			losses = append(losses, movers[i])
+		}
+	}
+	if len(gains) > 0 {
+		rows = append(rows, Row{"", "Altas"})
+		for _, m := range gains {
+			rows = append(rows, Row{m.label, formatQuote(m.prefix, m.price, m.dec, m.chg)})
+		}
+	}
+	if len(losses) > 0 {
+		rows = append(rows, Row{"", "Baixas"})
+		for _, m := range losses {
+			rows = append(rows, Row{m.label, formatQuote(m.prefix, m.price, m.dec, m.chg)})
+		}
+	}
+
 	if len(rows) == 0 {
 		return Card{Title: "Mercados", Rows: []Row{{"", "Indisponível"}}}
 	}
