@@ -1,0 +1,46 @@
+name: Terraform plan
+
+# Plans infra/aws on pull-request changes. Applies are a separate workflow
+# (/apply comment). Auth is GitHub OIDC into the plan role reused from the
+# workhours-manager repo (see infra/aws/README.md).
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'infra/aws/**'
+      - '.github/workflows/terraform-aws.yml'
+      - '.github/workflows/terraform-aws-apply.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ">= 1.6"
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::041364215703:role/whours-github-actions-terraform-plan
+          aws-region: us-east-1
+
+      - name: Terraform init
+        working-directory: infra/aws
+        run: terraform init
+
+      - name: Terraform plan
+        working-directory: infra/aws
+        env:
+          # The real GitHub token is an environment secret used only at
+          # apply time; planning only needs a non-empty placeholder.
+          TF_VAR_github_token: plan-only-placeholder-value
+        run: terraform plan -no-color -input=false -out=tfplan
