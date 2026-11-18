@@ -2,10 +2,10 @@ name: Render dashboard
 
 on:
   schedule:
-    # Every 15 minutes. GitHub schedules in UTC and may delay runs.
-    # Note: scheduled workflows only run on the default branch and pause
-    # after ~60 days of repository inactivity.
-    - cron: "*/15 * * * *"
+    # Every 15 minutes during the day, in Brasília time (UTC-3):
+    # UTC 10:00–23:59 + 00:00–01:45 ≈ BRT 07:00–22:45.
+    # GitHub runs schedules best-effort (observed ~2-3x/day on this repo).
+    - cron: "*/15 10-23,0-1 * * *"
   workflow_dispatch: {}
 
 permissions:
