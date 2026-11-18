@@ -13,6 +13,21 @@ resource "aws_cloudwatch_event_connection" "github" {
       key   = "Authorization"
       value = "Bearer ${var.github_token}"
     }
+
+    invocation_http_parameters {
+      header {
+        key   = "Accept"
+        value = "application/vnd.github+json"
+      }
+      header {
+        key   = "X-GitHub-Api-Version"
+        value = "2022-11-28"
+      }
+      header {
+        key   = "User-Agent"
+        value = "kindle-dashboard-scheduler"
+      }
+    }
   }
 }
 
@@ -23,21 +38,6 @@ resource "aws_cloudwatch_event_api_destination" "github" {
   invocation_endpoint = "https://api.github.com/repos/${var.github_repo}/actions/workflows/${var.workflow_file}/dispatches"
   http_method         = "POST"
   invocation_rate_limit_per_second = 1
-
-  invocation_http_parameters {
-    header {
-      key   = "Accept"
-      value = "application/vnd.github+json"
-    }
-    header {
-      key   = "X-GitHub-Api-Version"
-      value = "2022-11-28"
-    }
-    header {
-      key   = "User-Agent"
-      value = "kindle-dashboard-scheduler"
-    }
-  }
 }
 
 data "aws_iam_policy_document" "scheduler" {
