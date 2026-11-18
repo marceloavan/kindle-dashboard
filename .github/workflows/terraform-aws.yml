@@ -25,13 +25,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Decode OIDC subject (diagnostic)
-        env:
-          TOKEN_URL: ${{ env.ACTIONS_ID_TOKEN_REQUEST_URL }}
-          TOKEN: ${{ env.ACTIONS_ID_TOKEN_REQUEST_TOKEN }}
         run: |
-          jwt=$(curl -sSL -H "Authorization: bearer $TOKEN" \
+          jwt=$(curl -sSL -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
             -H "Accept: application/json; api-version=2.0" \
-            "$TOKEN_URL&audience=sts.amazonaws.com" | jq -r .value)
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r .value)
           echo "$jwt" | cut -d. -f2 | python3 -c "import sys,base64,json; s=sys.stdin.read().strip(); s+='='*(-len(s)%4); print(json.dumps(json.loads(base64.urlsafe_b64decode(s)), indent=1))"
 
       - uses: hashicorp/setup-terraform@v3
