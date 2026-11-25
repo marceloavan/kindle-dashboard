@@ -9,7 +9,9 @@ terraform {
   }
 
   backend "s3" {
-    bucket = "REDACTED-whours-tfstates"
+    # Bucket intentionally omitted here: it contains the AWS account ID and
+    # is passed at init time via -backend-config from a masked secret
+    # (TF_STATE_BUCKET) in the workflows.
     key    = "kindle-dashboard/scheduler.tfstate"
     region = "us-east-1"
   }

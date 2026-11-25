@@ -30,12 +30,16 @@ jobs:
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::REDACTED:role/whours-github-actions-terraform-plan
+          role-to-assume: ${{ secrets.AWS_PLAN_ROLE_ARN }}
           aws-region: us-east-1
 
       - name: Terraform init
         working-directory: infra/aws
-        run: terraform init
+        env:
+          # State bucket name kept out of the public repo (contains the AWS
+          # account ID); provided via a masked secret.
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+        run: terraform init -backend-config="bucket=$TF_STATE_BUCKET"
 
       - name: Terraform plan
         working-directory: infra/aws
