@@ -40,10 +40,22 @@ resource "aws_cloudwatch_event_api_destination" "github" {
   invocation_rate_limit_per_second = 1
 }
 
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
+
+# EventBridge Scheduler rejects the API destination ARN when it carries the
+# trailing UUID, so the target ARN is built without it.
+locals {
+  api_destination_arn = "arn:aws:events:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:api-destination/${aws_cloudwatch_event_api_destination.github.name}"
+}
+
 data "aws_iam_policy_document" "scheduler" {
   statement {
-    actions   = ["events:InvokeApiDestination"]
-    resources = [aws_cloudwatch_event_api_destination.github.arn]
+    actions = ["events:InvokeApiDestination"]
+    resources = [
+      aws_cloudwatch_event_api_destination.github.arn, # full ARN (with UUID)
+      local.api_destination_arn,                        # ARN form used by Scheduler
+    ]
   }
 }
 
@@ -78,7 +90,7 @@ resource "aws_scheduler_schedule" "render" {
   }
 
   target {
-    arn      = aws_cloudwatch_event_api_destination.github.arn
+    arn      = local.api_destination_arn
     role_arn = aws_iam_role.scheduler.arn
     input    = jsonencode({ ref = "main" })
   }
