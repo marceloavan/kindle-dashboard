@@ -17,8 +17,8 @@ variable "github_token" {
 }
 
 variable "schedule_expression" {
-  description = "Cron for the EventBridge rule (UTC only; see scheduler.tf)."
+  description = "Cron for the EventBridge rule (6 fields incl. year; UTC only)."
   type        = string
   # UTC 10:00-23:59 + 00:00-01:45 = 07:00-22:45 America/Sao_Paulo.
-  default = "cron(*/15 10-23,0-1 * * *)"
+  default = "cron(*/15 10-23,0-1 * * ? *)"
 }
