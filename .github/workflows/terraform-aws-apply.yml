@@ -1,0 +1,55 @@
+name: Terraform apply
+
+# Applies infra/aws when a collaborator comments /apply on a pull request.
+# Auth is GitHub OIDC into the apply role reused from the workhours-manager
+# repo, gated by the aws-prd environment (which also holds GH_DISPATCH_PAT,
+# the GitHub token passed as TF_VAR_github_token).
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  apply:
+    if: github.event.issue.pull_request && startsWith(github.event.comment.body, '/apply')
+    runs-on: ubuntu-latest
+    environment: aws-prd
+    steps:
+      - name: Authorize
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          permission=$(gh api "repos/${{ github.repository }}/collaborators/${{ github.event.comment.user.login }}/permission" --jq '.permission' 2>/dev/null || echo none)
+          case "$permission" in
+            admin|write|maintain) echo "authorized: $permission" ;;
+            *) echo "::error::/apply requires write access; ${{ github.event.comment.user.login }} has '$permission'" && exit 1 ;;
+          esac
+          state=$(gh pr view "${{ github.event.issue.number }}" --repo "${{ github.repository }}" --json state --jq '.state')
+          if [ "$state" != "OPEN" ]; then
+            echo "::error::PR #${{ github.event.issue.number }} is not open" && exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ">= 1.6"
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::REDACTED:role/whours-github-actions-terraform-apply
+          aws-region: us-east-1
+
+      - name: Terraform apply
+        working-directory: infra/aws
+        env:
+          TF_VAR_github_token: ${{ secrets.GH_DISPATCH_PAT }}
+        run: |
+          terraform init
+          terraform apply -auto-approve -input=false
