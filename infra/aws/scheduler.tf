@@ -90,8 +90,15 @@ resource "aws_scheduler_schedule" "render" {
   }
 
   target {
-    arn      = local.api_destination_arn
+    # API destinations are invoked through Scheduler's universal target, not
+    # through the destination's own ARN (which CreateSchedule rejects).
+    arn      = "arn:aws:scheduler:::aws-sdk:eventbridge:invokeApiDestination"
     role_arn = aws_iam_role.scheduler.arn
-    input    = jsonencode({ ref = "main" })
+    input = jsonencode({
+      ApiDestinationArn = aws_cloudwatch_event_api_destination.github.arn
+      HttpParameters = {
+        BodyParameters = { ref = "main" }
+      }
+    })
   }
 }
