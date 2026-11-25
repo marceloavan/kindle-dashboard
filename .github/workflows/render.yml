@@ -41,4 +41,11 @@ jobs:
         with:
           path: site
 
+      - name: Wait for artifact metadata
+        # deploy-pages intermittently finds no artifacts when it queries
+        # immediately after the upload (transient race); a short settle
+        # delay avoids the flake.
+        shell: bash
+        run: sleep 20
+
       - uses: actions/deploy-pages@v4
