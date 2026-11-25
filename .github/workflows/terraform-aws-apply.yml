@@ -35,7 +35,9 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          # The PR merge ref (base + head); the pull_request object in the
+          # issue_comment payload doesn't reliably carry head.sha.
+          ref: refs/pull/${{ github.event.issue.number }}/merge
 
       - uses: hashicorp/setup-terraform@v3
         with:
