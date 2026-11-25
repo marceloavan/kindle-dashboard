@@ -35,7 +35,9 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          # The PR merge ref (base + head); the pull_request object in the
+          # issue_comment payload doesn't reliably carry head.sha.
+          ref: refs/pull/${{ github.event.issue.number }}/merge
 
       - uses: hashicorp/setup-terraform@v3
         with:
@@ -43,13 +45,14 @@ jobs:
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::REDACTED:role/whours-github-actions-terraform-apply
+          role-to-assume: ${{ secrets.AWS_APPLY_ROLE_ARN }}
           aws-region: us-east-1
 
       - name: Terraform apply
         working-directory: infra/aws
         env:
           TF_VAR_github_token: ${{ secrets.GH_DISPATCH_PAT }}
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
         run: |
-          terraform init
+          terraform init -backend-config="bucket=$TF_STATE_BUCKET"
           terraform apply -auto-approve -input=false
