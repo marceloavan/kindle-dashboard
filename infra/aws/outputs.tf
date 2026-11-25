@@ -1,6 +1,6 @@
 output "schedule_arn" {
-  description = "ARN of the EventBridge schedule."
-  value       = aws_scheduler_schedule.render.arn
+  description = "ARN of the EventBridge rule."
+  value       = aws_cloudwatch_event_rule.render.arn
 }
 
 output "api_destination_arn" {

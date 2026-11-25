@@ -1,7 +1,7 @@
-# Reliable clock for the dashboard: EventBridge Scheduler fires every 15
-# minutes (07:00-22:59 BRT) at an API Destination that dispatches the GitHub
-# Actions workflow. GitHub's own cron scheduler was delivering ~3 runs/day,
-# so the clock lives here instead.
+# Reliable clock for the dashboard: an EventBridge rule with a cron schedule
+# fires every 15 minutes (07:00-22:45 BRT) targeting an API destination that
+# dispatches the GitHub Actions workflow. GitHub's own cron scheduler was
+# delivering ~3 runs/day, so the clock lives here instead.
 
 resource "aws_cloudwatch_event_connection" "github" {
   name               = "kindle-dashboard-github"
@@ -40,65 +40,45 @@ resource "aws_cloudwatch_event_api_destination" "github" {
   invocation_rate_limit_per_second = 1
 }
 
-data "aws_caller_identity" "current" {}
-data "aws_region" "current" {}
-
-# EventBridge Scheduler rejects the API destination ARN when it carries the
-# trailing UUID, so the target ARN is built without it.
-locals {
-  api_destination_arn = "arn:aws:events:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:api-destination/${aws_cloudwatch_event_api_destination.github.name}"
+# Classic EventBridge rules evaluate cron in UTC only. This window is
+# UTC 10:00-23:59 + 00:00-01:45 = 07:00-22:45 America/Sao_Paulo.
+resource "aws_cloudwatch_event_rule" "render" {
+  name                = "kindle-dashboard-render"
+  description         = "Triggers the render workflow during daytime hours (BRT)"
+  schedule_expression = var.schedule_expression
 }
 
-data "aws_iam_policy_document" "scheduler" {
+resource "aws_cloudwatch_event_target" "render" {
+  rule     = aws_cloudwatch_event_rule.render.name
+  arn      = aws_cloudwatch_event_api_destination.github.arn
+  role_arn = aws_iam_role.render_rule.arn
+  input    = jsonencode({ ref = "main" })
+}
+
+data "aws_iam_policy_document" "render_rule_assume" {
   statement {
-    actions = ["events:InvokeApiDestination"]
-    resources = [
-      aws_cloudwatch_event_api_destination.github.arn, # full ARN (with UUID)
-      local.api_destination_arn,                        # ARN form used by Scheduler
-    ]
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "Service"
+      identifiers = ["events.amazonaws.com"]
+    }
   }
 }
 
-resource "aws_iam_role" "scheduler" {
-  name = "kindle-dashboard-scheduler"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Principal = { Service = "scheduler.amazonaws.com" }
-      Action    = "sts:AssumeRole"
-    }]
-  })
+resource "aws_iam_role" "render_rule" {
+  name               = "kindle-dashboard-render-rule"
+  assume_role_policy = data.aws_iam_policy_document.render_rule_assume.json
 }
 
-resource "aws_iam_role_policy" "scheduler" {
+data "aws_iam_policy_document" "render_rule" {
+  statement {
+    actions   = ["events:InvokeApiDestination"]
+    resources = [aws_cloudwatch_event_api_destination.github.arn]
+  }
+}
+
+resource "aws_iam_role_policy" "render_rule" {
   name   = "invoke-dispatch"
-  role   = aws_iam_role.scheduler.id
-  policy = data.aws_iam_policy_document.scheduler.json
-}
-
-resource "aws_scheduler_schedule" "render" {
-  name        = "kindle-dashboard-render"
-  description = "Triggers the dashboard render workflow during daytime hours"
-
-  schedule_expression          = var.schedule_expression
-  schedule_expression_timezone = var.schedule_timezone
-
-  flexible_time_window {
-    mode = "OFF"
-  }
-
-  target {
-    # API destinations are invoked through Scheduler's universal target, not
-    # through the destination's own ARN (which CreateSchedule rejects).
-    arn      = "arn:aws:scheduler:::aws-sdk:eventbridge:invokeApiDestination"
-    role_arn = aws_iam_role.scheduler.arn
-    input = jsonencode({
-      ApiDestinationArn = aws_cloudwatch_event_api_destination.github.arn
-      HttpParameters = {
-        BodyParameters = { ref = "main" }
-      }
-    })
-  }
+  role   = aws_iam_role.render_rule.id
+  policy = data.aws_iam_policy_document.render_rule.json
 }

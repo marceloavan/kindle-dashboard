@@ -17,14 +17,8 @@ variable "github_token" {
 }
 
 variable "schedule_expression" {
-  description = "Cron for the scheduler, evaluated in schedule_timezone."
+  description = "Cron for the EventBridge rule (UTC only; see scheduler.tf)."
   type        = string
-  # Every 15 minutes, 07:00-22:59 Brasília time.
-  default     = "cron(*/15 7-22 * * *)"
-}
-
-variable "schedule_timezone" {
-  description = "IANA timezone the cron is evaluated in."
-  type        = string
-  default     = "America/Sao_Paulo"
+  # UTC 10:00-23:59 + 00:00-01:45 = 07:00-22:45 America/Sao_Paulo.
+  default = "cron(*/15 10-23,0-1 * * *)"
 }
