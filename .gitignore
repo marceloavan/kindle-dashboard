@@ -4,5 +4,11 @@ site/
 # Compiled binary (if you run `go build .`)
 /kindle-dashboard
 
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+
 # OS
 .DS_Store

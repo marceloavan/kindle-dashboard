@@ -79,6 +79,13 @@ result.
 Notes: scheduled workflows only run from the default branch, and GitHub
 pauses them after ~60 days of repository inactivity.
 
+### Reliable clock (AWS)
+
+GitHub's scheduler is best-effort (observed ~3 runs/day here). For reliable
+15-minute renders, `infra/aws/` provisions an EventBridge Scheduler
+(07:00–22:45 BRT) that dispatches the workflow via the GitHub REST API — see
+`infra/aws/README.md`. The Actions `schedule` trigger stays as a backup.
+
 ## Configuration
 
 Sources and defaults are set via environment variables (repository variables
